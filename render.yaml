@@ -4,7 +4,7 @@ services:
     name: cns-outreach-web
     env: python
     region: oregon
-    plan: starter
+    plan: free
     buildCommand: ./build.sh
     startCommand: gunicorn cns_app.wsgi:application
     envVars:
@@ -35,7 +35,7 @@ services:
     name: cns-outreach-worker
     env: python
     region: oregon
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A cns_app worker -l info
     envVars:
@@ -66,7 +66,7 @@ services:
   - type: redis
     name: cns-redis
     region: oregon
-    plan: starter
+    plan: free
     maxmemoryPolicy: noeviction
     ipAllowList: []
 
@@ -76,4 +76,4 @@ databases:
     databaseName: cns_outreach
     user: cns_user
     region: oregon
-    plan: starter
+    plan: free
