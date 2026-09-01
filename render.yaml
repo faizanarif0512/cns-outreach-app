@@ -1,5 +1,5 @@
 services:
-  # 1. Django Web Application
+  # Django Web Application (100% Free Tier)
   - type: web
     name: cns-outreach-web
     env: python
@@ -14,14 +14,11 @@ services:
         generateValue: true
       - key: ALLOWED_HOSTS
         value: ".onrender.com"
+      - key: CELERY_TASK_ALWAYS_EAGER
+        value: "True"
       - key: DATABASE_URL
         fromDatabase:
           name: cns-db
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: cns-redis
           property: connectionString
       - key: GOOGLE_API_KEY
         sync: false
@@ -30,47 +27,7 @@ services:
       - key: EMAIL_HOST_PASSWORD
         sync: false
 
-  # 2. Celery Background Worker
-  - type: worker
-    name: cns-outreach-worker
-    env: python
-    region: oregon
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: celery -A cns_app worker -l info
-    envVars:
-      - key: DEBUG
-        value: "False"
-      - key: SECRET_KEY
-        fromService:
-          type: web
-          name: cns-outreach-web
-          envVarKey: SECRET_KEY
-      - key: DATABASE_URL
-        fromDatabase:
-          name: cns-db
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: cns-redis
-          property: connectionString
-      - key: GOOGLE_API_KEY
-        sync: false
-      - key: EMAIL_HOST_USER
-        sync: false
-      - key: EMAIL_HOST_PASSWORD
-        sync: false
-
-  # 3. Redis Task Broker
-  - type: redis
-    name: cns-redis
-    region: oregon
-    plan: free
-    maxmemoryPolicy: noeviction
-    ipAllowList: []
-
-# 4. PostgreSQL Database
+# PostgreSQL Database (100% Free Tier)
 databases:
   - name: cns-db
     databaseName: cns_outreach
