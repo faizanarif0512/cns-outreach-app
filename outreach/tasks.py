@@ -104,6 +104,47 @@ def _validate_sender_profile(sender_profile):
     return None
 
 
+def _connect_smtp(smtp_host: str, smtp_port: int, sender: str, password: str):
+    """
+    Connect to SMTP using IPv4 explicitly to avoid [Errno 101] Network is unreachable
+    caused by IPv6 routing issues on cloud containers (e.g. Render).
+    Includes automatic fallback between port 587 (STARTTLS) and port 465 (SSL).
+    """
+    import socket
+    import smtplib
+
+    try:
+        addr_info = socket.getaddrinfo(smtp_host, int(smtp_port), socket.AF_INET, socket.SOCK_STREAM)
+        target_ip = addr_info[0][4][0] if addr_info else smtp_host
+    except Exception:
+        target_ip = smtp_host
+
+    ports_to_try = [int(smtp_port)]
+    if 465 not in ports_to_try:
+        ports_to_try.append(465)
+    if 587 not in ports_to_try:
+        ports_to_try.append(587)
+
+    last_error = None
+    for port in ports_to_try:
+        try:
+            if port == 465:
+                server = smtplib.SMTP_SSL(target_ip, port, timeout=25)
+                server.ehlo(smtp_host)
+            else:
+                server = smtplib.SMTP(target_ip, port, timeout=25)
+                server.ehlo(smtp_host)
+                server.starttls()
+                server.ehlo(smtp_host)
+
+            server.login(sender, password)
+            return server
+        except Exception as exc:
+            last_error = exc
+
+    raise last_error
+
+
 def _send_single_email(
     *,
     recipient_email: str,
@@ -113,11 +154,8 @@ def _send_single_email(
     sender_profile: dict,
 ) -> tuple[bool, str]:
     """
-    Send one email via SMTP using credentials from Django settings (sourced from
-    the .env file).  Returns (success: bool, message: str).
-
-    This function is deliberately isolated so that a failure on one recipient
-    never crashes the outer task loop.
+    Send one email via SMTP using credentials from Django settings / user profile.
+    Returns (success: bool, message: str).
     """
     sender = sender_profile["mailbox_email"]
     password = sender_profile["mailbox_password"]
@@ -136,17 +174,20 @@ def _send_single_email(
             msg["Cc"] = ", ".join(cc_emails)
         msg.attach(MIMEText(body, "plain"))
 
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(sender, password)
+        server = _connect_smtp(smtp_host, smtp_port, sender, password)
+        try:
             all_recipients = [recipient_email] + cc_emails
             server.send_message(msg, from_addr=sender, to_addrs=all_recipients)
+        finally:
+            try:
+                server.quit()
+            except Exception:
+                pass
 
         return True, "Sent"
 
     except smtplib.SMTPAuthenticationError:
-        return False, "SMTP authentication failed — check EMAIL_HOST_PASSWORD in .env"
+        return False, "SMTP authentication failed — check EMAIL_HOST_PASSWORD or Gmail App Password"
     except smtplib.SMTPConnectError as exc:
         return False, f"Could not connect to SMTP server: {exc}"
     except smtplib.SMTPRecipientsRefused:
